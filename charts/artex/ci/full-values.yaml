@@ -1,0 +1,54 @@
+# Exercises the optional objects: ingress, NetworkPolicy, PDB, skills volume,
+# existing claims, extra env and a full DSN instead of host/port parts.
+database:
+  dsn: postgres://artex:ci@postgres:5432/artex?sslmode=disable
+secrets:
+  secretKey: ci-secret-key
+llm:
+  provider: openai
+  model: gpt-x
+  baseURL: https://llm.example.com/v1
+  privateEndpoints: llm.example.com:443
+app:
+  trustedProxies: 10.0.0.0/8
+  updateCheck: true
+  noiseProfile: balanced
+  taskBudgetTokens: "1000000"
+extraEnv:
+  - name: TZ
+    value: Europe/Paris
+extraEnvFrom:
+  - configMapRef:
+      name: artex-extra
+persistence:
+  data:
+    existingClaim: ci-data
+  keys:
+    existingClaim: ci-keys
+skills:
+  enabled: true
+  existingClaim: ci-skills
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+  hosts:
+    - host: artex.ci.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: artex-ci-tls
+      hosts:
+        - artex.ci.example.com
+networkPolicy:
+  enabled: true
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+podDisruptionBudget:
+  enabled: true

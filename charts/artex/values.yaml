@@ -1,0 +1,264 @@
+# Default values for artex.
+#
+# Read the "Deployment notes" section of README.md before changing the security
+# context: the server is expected to run as root, and the chart depends on it.
+
+# -- Override the chart name.
+nameOverride: ""
+# -- Override the fully qualified release name.
+fullnameOverride: ""
+
+image:
+  # -- Container image repository. The upstream image is published to GHCR from
+  # the next tagged release; until then point this at your own build.
+  repository: ghcr.io/baarai/artex
+  # -- Image tag. Defaults to the chart's appVersion when empty.
+  tag: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Secrets used to pull the image, as a list of {name: ...}.
+imagePullSecrets: []
+
+# -- Replica count. Keep it at 1: the runtime state (keys/, data/) is
+# ReadWriteOnce and the exploration engine is a single-writer design.
+replicaCount: 1
+
+executor:
+  # -- Agent processes (Bash, shell, custom tools, stdio MCP servers) run under
+  # this uid/gid, never as root. Requires the server to run as root, which is the
+  # case in the container. Set uid to -1 to disable the drop (not recommended).
+  uid: 10001
+  gid: 10001
+
+database:
+  # -- PostgreSQL connection string. When set it wins over the host/port/user
+  # fields below and is stored in the chart Secret, not in the pod spec.
+  dsn: ""
+  # -- PostgreSQL host, reachable from the pod (an operator-managed instance).
+  host: ""
+  # -- PostgreSQL port.
+  port: 5432
+  # -- PostgreSQL user.
+  user: artex
+  # -- PostgreSQL database name.
+  name: artex
+  # -- libpq sslmode. Use "require"/"verify-full" when the database is not on the
+  # same node.
+  sslmode: disable
+  # -- PostgreSQL password. Prefer secrets.existingSecret in shared clusters.
+  password: ""
+
+llm:
+  # -- Wire format of the default model profile: openai or anthropic (also
+  # configurable later in the UI).
+  provider: ""
+  # -- Default model id.
+  model: ""
+  # -- Base URL of a self-hosted or proxied endpoint.
+  baseURL: ""
+  # -- HTTP proxy used for model calls.
+  proxy: ""
+  # -- Exact host:port entries the model-list fetch may reach on private
+  # addresses, comma separated (for example host.docker.internal:11434).
+  privateEndpoints: ""
+  # -- Anthropic API key.
+  anthropicApiKey: ""
+  # -- OpenAI-compatible API key.
+  openaiApiKey: ""
+
+secrets:
+  # -- Name of an existing Secret containing POSTGRES_PASSWORD and optionally
+  # ANTHROPIC_API_KEY, OPENAI_API_KEY, ARTEX_SECRET_KEY and ARTEX_PG_DSN. When
+  # set, the chart creates no Secret and the values above for credentials are
+  # ignored.
+  existingSecret: ""
+  # -- Key used to encrypt credential-bearing rows at rest. Empty means the
+  # server generates keys/secret.key at first start; that file lives on the keys
+  # volume and must be preserved, or encrypted rows become unreadable.
+  secretKey: ""
+
+# -- Extra environment variables, as a list of {name: ..., value: ...} entries.
+extraEnv: []
+# -- Extra environment variables from ConfigMaps/Secrets, as a list of envFrom
+# entries.
+extraEnvFrom: []
+
+app:
+  # -- Port the console and API listen on inside the pod.
+  port: 8787
+  # -- Recording-proxy port. It is deliberately not published by the Service:
+  # only processes inside the pod (the agent's own tools) should reach it.
+  proxyPort: 8788
+  # -- Comma-separated CIDRs of reverse proxies whose X-Forwarded-For is trusted.
+  # Set it to your ingress controller range, otherwise every login attempt is
+  # counted against the controller's address.
+  trustedProxies: ""
+  # -- Check GitHub for a newer release. Off by default; it is the only outbound
+  # call the server makes on its own.
+  updateCheck: false
+  # -- Target-request noise profile: off, quiet, balanced or aggressive.
+  noiseProfile: ""
+  # -- User-Agent forced on target requests.
+  targetUserAgent: ""
+  # -- Wrap untrusted tool output with a boundary marker. Empty means on.
+  untrustedBoundary: ""
+  # -- Hierarchical run budgets; empty or 0 means unlimited.
+  taskBudgetTokens: ""
+  taskBudgetTurns: ""
+  intentBudgetTokens: ""
+  intentBudgetTurns: ""
+
+# -- Command override. The image entrypoint is the start.sh supervisor, which
+# forwards SIGTERM and relaunches a crashed binary; keep the default in
+# Kubernetes so a crash still restarts inside the pod.
+command: []
+# -- Arguments passed to the entrypoint. When empty the chart builds them from
+# app.port, app.proxyPort and executor.uid/gid.
+args: []
+
+service:
+  # -- Service type. ClusterIP is enough: the console is reached through an
+  # Ingress or a port-forward.
+  type: ClusterIP
+  # -- Service port.
+  port: 8787
+
+ingress:
+  # -- Expose the console through an Ingress.
+  enabled: false
+  # -- Ingress class name.
+  className: ""
+  # -- Ingress annotations (TLS issuer, body size, timeouts...).
+  annotations: {}
+  # -- Ingress hosts. The API and the UI share the same port, so one path is
+  # enough.
+  hosts:
+    - host: artex.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- TLS configuration.
+  tls: []
+  #  - secretName: artex-tls
+  #    hosts:
+  #      - artex.example.com
+
+persistence:
+  data:
+    # -- Persist the runtime data directory (traffic index, task files,
+    # transcripts, archives). Without it, every restart loses the history.
+    enabled: true
+    # -- Existing claim to use instead of creating one.
+    existingClaim: ""
+    # -- Requested size.
+    size: 20Gi
+    # -- Storage class; empty uses the cluster default.
+    storageClassName: ""
+    # -- Access mode.
+    accessMode: ReadWriteOnce
+  keys:
+    # -- Persist the signing key (jwt.key) and the secrets key (secret.key).
+    # Losing this volume signs every operator out and makes encrypted rows
+    # unreadable.
+    enabled: true
+    # -- Existing claim to use instead of creating one.
+    existingClaim: ""
+    # -- Requested size. The volume only holds two small files.
+    size: 1Gi
+    # -- Storage class; empty uses the cluster default.
+    storageClassName: ""
+    # -- Access mode.
+    accessMode: ReadWriteOnce
+
+skills:
+  # -- Mount an operator-owned skills directory over the image's /app/skills.
+  # Skills are code the agent can run: treat this volume as trusted content only.
+  enabled: false
+  # -- Existing claim holding one directory per skill.
+  existingClaim: ""
+  # -- Size of the claim created when existingClaim is empty.
+  size: 1Gi
+  # -- Storage class; empty uses the cluster default.
+  storageClassName: ""
+
+# -- Resource requests and limits. The image bundles nmap, nuclei, httpx,
+# katana, ffuf, dalfox, sqlmap, bbot and Chromium, and an exploration runs
+# several of them at once.
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2
+    memory: 4Gi
+
+podAnnotations: {}
+podLabels: {}
+# -- Labels added to every object created by the chart.
+commonLabels: {}
+
+securityContext:
+  # -- The process runs as root so it can start agent processes under
+  # executor.uid. Do not set runAsNonRoot: the privilege drop is then disabled
+  # silently and the agent keeps the server identity.
+  runAsUser: 0
+  runAsNonRoot: false
+  # -- allowPrivilegeEscalation:false sets no_new_privs. It does not prevent the
+  # root server from dropping to the executor uid (that is a privilege drop, not
+  # an escalation), so keep it.
+  allowPrivilegeEscalation: false
+  # -- Extra capabilities. The runtime default already includes SETUID, SETGID
+  # and NET_RAW; dropping ALL would break both the executor drop and nmap SYN
+  # scans. Left empty on purpose.
+  capabilities: {}
+
+# -- Container security context overrides, merged into the block above.
+containerSecurityContext: {}
+
+probes:
+  startup:
+    enabled: true
+    periodSeconds: 5
+    failureThreshold: 60
+  readiness:
+    enabled: true
+    periodSeconds: 10
+    failureThreshold: 6
+  liveness:
+    enabled: true
+    periodSeconds: 20
+    failureThreshold: 3
+
+serviceAccount:
+  # -- Create a ServiceAccount for the pod.
+  create: true
+  # -- Name, when create is true.
+  name: ""
+  # -- Annotations (for example an IRSA/Workload-Identity binding).
+  annotations: {}
+  # -- The application never calls the Kubernetes API.
+  automountServiceAccountToken: false
+
+networkPolicy:
+  # -- Create a NetworkPolicy that allows HTTP ingress on the console port and
+  # leaves egress open (the agent scans arbitrary targets by design).
+  enabled: false
+  # -- Namespace/pod selectors allowed to reach the console port.
+  ingress:
+    - namespaceSelector: {}
+  # -- Allowed egress peers. Empty means "all destinations", which is what a
+  # scanning tool needs.
+  egress: []
+
+podDisruptionBudget:
+  # -- Create a PodDisruptionBudget. With one replica this only documents intent.
+  enabled: false
+  minAvailable: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+terminationGracePeriodSeconds: 30

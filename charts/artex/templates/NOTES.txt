@@ -1,0 +1,46 @@
+ARTEX has been installed as {{ include "artex.fullname" . }}.
+
+1. Wait for the console to become ready:
+     kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "artex.fullname" . }}
+
+2. Read the one-time setup token. It is printed once while no admin password is
+   set, and is never written to the application log:
+     kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "artex.fullname" . }} | grep -i "setup token"
+
+3. Reach the console:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+     https://{{ .host }}/setup
+{{- end }}
+{{- else }}
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "artex.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+     # then open http://127.0.0.1:{{ .Values.service.port }}/setup
+{{- end }}
+
+4. Set the password (12 characters minimum) with the token. The username is ARTEX.
+
+{{- if not .Values.ingress.enabled }}
+
+WARNING: there is no TLS in front of this release. The session token travels in a
+cookie and can be passed in a query parameter, so anything on the network path can
+read it. Keep the port-forward, or enable the Ingress with TLS.
+{{- end }}
+{{- if and .Values.ingress.enabled (not .Values.app.trustedProxies) }}
+
+WARNING: ingress.enabled is true but app.trustedProxies is empty. Behind a reverse
+proxy every login attempt and every change-password attempt is then counted
+against the controller address, and the security headers are computed from the
+wrong peer. Set app.trustedProxies to the controller CIDR, for example
+"10.42.0.0/16".
+{{- end }}
+{{- if not .Values.persistence.keys.enabled }}
+
+WARNING: keys persistence is disabled. jwt.key and secret.key live in an emptyDir:
+every restart signs the operator out, and rows encrypted with the previous key can
+no longer be read.
+{{- end }}
+{{- if not .Values.persistence.data.enabled }}
+
+WARNING: data persistence is disabled. Task history, transcripts, traffic captures
+and archives are lost on every restart.
+{{- end }}
