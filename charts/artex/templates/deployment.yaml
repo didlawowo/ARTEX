@@ -1,0 +1,259 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "artex.fullname" . }}
+  labels:
+    {{- include "artex.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # The runtime state is a single-writer, ReadWriteOnce volume: a rolling update
+  # would start the new pod before the old one releases it.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "artex.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- if not .Values.secrets.existingSecret }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "artex.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "artex.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+      containers:
+        - name: artex
+          image: {{ include "artex.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.args }}
+          args:
+            {{- toYaml .Values.args | nindent 12 }}
+          {{- else }}
+          args:
+            - "-addr"
+            - ":{{ .Values.app.port }}"
+            - "-proxy"
+            - ":{{ .Values.app.proxyPort }}"
+            - "-exec-uid"
+            - {{ .Values.executor.uid | quote }}
+            - "-exec-gid"
+            - {{ .Values.executor.gid | quote }}
+          {{- end }}
+          securityContext:
+            {{- $cs := dict "allowPrivilegeEscalation" .Values.securityContext.allowPrivilegeEscalation }}
+            {{- if .Values.securityContext.capabilities }}
+            {{- $_ := set $cs "capabilities" .Values.securityContext.capabilities }}
+            {{- end }}
+            {{- $cs = mergeOverwrite $cs (.Values.containerSecurityContext | default dict) }}
+            {{- toYaml $cs | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.port }}
+              protocol: TCP
+            # The recording proxy is reachable from inside the pod only; the
+            # Service deliberately does not publish this port.
+            - name: proxy
+              containerPort: {{ .Values.app.proxyPort }}
+              protocol: TCP
+          env:
+            - name: ARTEX_JWT_KEY_DIR
+              value: /app/keys
+            {{- if .Values.database.dsn }}
+            - name: ARTEX_PG_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "artex.secretName" . }}
+                  key: ARTEX_PG_DSN
+            {{- else }}
+            - name: ARTEX_PG_HOST
+              value: {{ required "set database.host (or database.dsn, or secrets.existingSecret)" (default .Values.database.host "") | quote }}
+            - name: ARTEX_PG_PORT
+              value: {{ .Values.database.port | quote }}
+            - name: ARTEX_PG_USER
+              value: {{ .Values.database.user | quote }}
+            - name: ARTEX_PG_DBNAME
+              value: {{ .Values.database.name | quote }}
+            - name: ARTEX_PG_SSLMODE
+              value: {{ .Values.database.sslmode | quote }}
+            - name: ARTEX_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "artex.secretName" . }}
+                  key: POSTGRES_PASSWORD
+            {{- end }}
+            # Model credentials stay optional: they may come from the chart
+            # Secret, from secrets.existingSecret, or from the UI at first start.
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "artex.secretName" . }}
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "artex.secretName" . }}
+                  key: OPENAI_API_KEY
+                  optional: true
+            - name: ARTEX_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "artex.secretName" . }}
+                  key: ARTEX_SECRET_KEY
+                  optional: true
+            {{- with .Values.llm.provider }}
+            - name: ARTEX_LLM_PROVIDER
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.llm.model }}
+            - name: ARTEX_LLM_MODEL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.llm.baseURL }}
+            - name: ARTEX_LLM_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.llm.proxy }}
+            - name: ARTEX_LLM_PROXY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.llm.privateEndpoints }}
+            - name: ARTEX_LLM_PRIVATE_ENDPOINTS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.trustedProxies }}
+            - name: ARTEX_TRUSTED_PROXIES
+              value: {{ . | quote }}
+            {{- end }}
+            - name: ARTEX_UPDATE_CHECK
+              value: {{ ternary "1" "0" .Values.app.updateCheck | quote }}
+            {{- with .Values.app.noiseProfile }}
+            - name: ARTEX_NOISE_PROFILE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.targetUserAgent }}
+            - name: ARTEX_TARGET_USER_AGENT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.untrustedBoundary }}
+            - name: ARTEX_UNTRUSTED_BOUNDARY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.taskBudgetTokens }}
+            - name: ARTEX_TASK_BUDGET_TOKENS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.taskBudgetTurns }}
+            - name: ARTEX_TASK_BUDGET_TURNS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.intentBudgetTokens }}
+            - name: ARTEX_INTENT_BUDGET_TOKENS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.intentBudgetTurns }}
+            - name: ARTEX_INTENT_BUDGET_TURNS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /api/ready
+              port: http
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: keys
+              mountPath: /app/keys
+            {{- if .Values.skills.enabled }}
+            - name: skills
+              mountPath: /app/skills
+            {{- end }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.data.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-data" (include "artex.fullname" .)) .Values.persistence.data.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: keys
+          {{- if .Values.persistence.keys.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-keys" (include "artex.fullname" .)) .Values.persistence.keys.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.skills.enabled }}
+        - name: skills
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-skills" (include "artex.fullname" .)) .Values.skills.existingClaim }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

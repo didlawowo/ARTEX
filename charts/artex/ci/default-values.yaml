@@ -1,0 +1,6 @@
+# Minimal values used by chart-testing (`helm lint` / `ct lint`).
+database:
+  host: postgres
+  password: chart-ci-password
+llm:
+  anthropicApiKey: sk-ant-ci-not-a-real-key

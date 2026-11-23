@@ -1,0 +1,53 @@
+{{- if and .Values.persistence.data.enabled (not .Values.persistence.data.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "artex.fullname" . }}-data
+  labels:
+    {{- include "artex.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.data.accessMode }}
+  {{- with .Values.persistence.data.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.data.size }}
+{{- end }}
+{{- if and .Values.persistence.keys.enabled (not .Values.persistence.keys.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "artex.fullname" . }}-keys
+  labels:
+    {{- include "artex.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.keys.accessMode }}
+  {{- with .Values.persistence.keys.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.keys.size }}
+{{- end }}
+{{- if and .Values.skills.enabled (not .Values.skills.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "artex.fullname" . }}-skills
+  labels:
+    {{- include "artex.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.skills.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.skills.size }}
+{{- end }}

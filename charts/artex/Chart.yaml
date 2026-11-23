@@ -1,0 +1,29 @@
+apiVersion: v2
+name: artex
+description: >
+  ARTEX — AI autonomous penetration-testing platform: web console, exploration
+  engine, recording proxy and report generation, backed by PostgreSQL.
+type: application
+version: 0.1.0
+appVersion: "v0.7.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/BaaRai/ARTEX
+sources:
+  - https://github.com/BaaRai/ARTEX
+keywords:
+  - security
+  - pentest
+  - vulnerability-scanner
+  - ai-agents
+maintainers:
+  - name: didlawowo
+    url: https://github.com/didlawowo
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/license: AGPL-3.0
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/BaaRai/ARTEX
+    - name: security policy
+      url: https://github.com/BaaRai/ARTEX/blob/main/SECURITY.md
+  artifacthub.io/prerelease: "true"
