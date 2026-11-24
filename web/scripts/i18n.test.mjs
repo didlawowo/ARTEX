@@ -62,18 +62,26 @@ test("Chinese browser tags, fallback languages, invalid preferences and blocked 
   for (const tag of ["zh", "zh-CN", "zh-SG", "zh-Hans-CN", "ZH-cn"]) {
     assert.equal(load({ languages: [tag] }).api.locale, "zh-CN");
   }
-  assert.equal(load({ saved: "invalid", languages: ["fr-FR", "zh-CN"] }).api.locale, "zh-CN");
+  assert.equal(load({ saved: "invalid", languages: ["fr-FR", "zh-CN"] }).api.locale, "fr");
   assert.equal(load({ blocked: true, languages: ["zh-CN"] }).api.locale, "zh-CN");
   assert.equal(load({ languages: null, language: "zh-CN" }).api.locale, "zh-CN");
   assert.equal(load({ languages: [], language: "zh-CN" }).api.locale, "en");
-  assert.equal(load({ languages: ["fr-FR"] }).api.locale, "en");
+  for (const tag of ["fr", "fr-FR", "fr-BE", "FR-fr"]) {
+    assert.equal(load({ languages: [tag] }).api.locale, "fr");
+  }
 });
 
-test("existing English and Turkish preferences and formatting are preserved", () => {
+test("existing English, French and Turkish preferences and formatting are preserved", () => {
   const english = load({ saved: "en", languages: ["zh-CN"] }).api;
+  const french = load({ saved: "fr", languages: ["zh-CN"] }).api;
   const turkish = load({ saved: "tr", languages: ["zh-CN"] }).api;
   assert.equal(english.locale, "en");
   assert.equal(english.t("Language"), "Language");
+  assert.equal(french.locale, "fr");
+  assert.equal(french.intlLocale, "fr-FR");
+  assert.equal(french.t("Language"), "Langue");
+  assert.equal(french.t("{count} tasks", { count: 3 }), "3 tâches");
+  assert.equal(french.t("Task #{id}"), "Tâche #{id}");
   assert.equal(turkish.locale, "tr");
   assert.equal(turkish.intlLocale, "tr-TR");
   assert.equal(turkish.t("Language"), "Dil");
