@@ -23,7 +23,7 @@ jobs:
       (github.actor != 'BaaRai' &&
        github.actor != 'github-actions[bot]' &&
        github.actor != 'dependabot[bot]')
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-artex
     steps:
       - uses: actions/checkout@v4
       - name: triage or reply

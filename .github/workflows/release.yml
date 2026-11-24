@@ -1,4 +1,8 @@
 name: release
+# Runners: the homelab's self-hosted Actions runners (label `arc-runner-artex`).
+# Each runner pod carries its own docker daemon (dind sidecar), so buildx and
+# the multi-arch build run locally; images are pushed to ghcr.io over public
+# HTTPS. See ci.yml for the runner contract.
 on:
   push:
     tags: ["v*"]
@@ -12,7 +16,7 @@ permissions:
 jobs:
   # ① Frontend static export (once), reused by the cross-compiled platform builds
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-artex
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,7 +36,7 @@ jobs:
   # ② Cross-compile for five platforms (with embedded frontend) + zip packaging
   binaries:
     needs: frontend
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-artex
     strategy:
       matrix:
         include:
@@ -83,7 +87,7 @@ jobs:
   # ③ Collect all zips → create the GitHub Release
   release:
     needs: binaries
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-artex
     permissions:
       contents: write # create the Release (softprops/action-gh-release)
       id-token: write # Sigstore signing of the provenance attestation
@@ -158,7 +162,7 @@ jobs:
   #    build both platforms without logging in or pushing.
   docker:
     needs: binaries
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-artex
     permissions:
       contents: read
       packages: write
